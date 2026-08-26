@@ -62,7 +62,7 @@ document_text ─►│   extract    │  regex/LLM field extraction
 │   ├── extraction_agent.py    # Extraction node
 │   ├── reasoning_agent.py     # Reasoning / derived-metrics node
 │   ├── validation_agent.py    # Validation node
-│   ├── graph.py                # State graph executor + workflow definition
+│   └── graph.py                # State graph executor + workflow definition
 │   └── api.py                  # FastAPI microservice
 ├── tests/
 │   ├── test_extraction_agent.py
@@ -79,7 +79,7 @@ document_text ─►│   extract    │  regex/LLM field extraction
 ### Installation
 
 ```bash
-git clone https://github.com/<your-username>/agentic-financial-data-extraction.git
+git clone https://github.com/deekshu05/agentic-financial-data-extraction.git
 cd agentic-financial-data-extraction
 pip install -r requirements.txt
 ```
@@ -121,6 +121,31 @@ curl -X POST localhost:8000/extract \
 docker build -t agentic-financial-extraction .
 docker run -p 8000:8000 agentic-financial-extraction
 ```
+
+## Sample run
+
+Real output running the graph against a well-formed document and then a document missing every required field, to show both the happy path and the retry/failure path:
+
+```python
+>>> graph = build_extraction_graph()
+>>> state = graph.invoke(AgentState(document_text=(
+...     "Company: Acme Robotics Inc.\nFiscal Period: Q3 2025\n"
+...     "Revenue: $120.5 million\nNet Income: $18.2 million\n"
+... )))
+>>> state.status, state.extracted_fields, state.derived_metrics, state.retries
+('validated',
+ {'company': 'Acme Robotics Inc.', 'revenue': 120.5, 'net_income': 18.2, 'fiscal_period': 'Q3 2025'},
+ {'net_margin_pct': 15.1, 'revenue_flagged_low': False},
+ 0)
+
+>>> bad_state = graph.invoke(AgentState(document_text="Nothing useful here."))
+>>> bad_state.status, bad_state.validation_errors, bad_state.retries
+('failed',
+ ['missing required field: company', 'missing required field: revenue', 'missing required field: fiscal_period'],
+ 1)
+```
+
+The second call shows the conditional retry routing actually firing: extraction comes back empty, validation fails, the graph routes back for one bounded retry, and only then reports `failed` with `retries == 1` — rather than either looping forever or failing silently on the first pass.
 
 ## Impact
 
